@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EasyEarn Pay — Live Selling & Rewards Platform</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            dark: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        body { background-color: #f8fafc; color: #1e293b; font-family: system-ui, -apple-system, sans-serif; }
+        .app-container { max-width: 480px; margin: 0 auto; min-height: 100vh; position: relative; background: #f8fafc; box-shadow: 0 0 25px rgba(0,0,0,0.05); }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-slide-up { animation: slideUp 0.2s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+        .gradient-brand { background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 50%, #06b6d4 100%); }
+    </style>
+</head>
+<body class="antialiased selection:bg-brand-500 selection:text-white pb-20">
+
+    <div class="app-container flex flex-col justify-between" id="app-root">
+        <!-- Rendered via JS -->
+    </div>
+
+    <!-- MODAL PORTAL -->
+    <div id="modal-container"></div>
+
+    <!-- FAST BACK-TO-BACK LIVE SELLING & WITHDRAWAL TICKER FEED -->
+    <div id="live-selling-toast-container" class="fixed bottom-20 left-4 z-50 pointer-events-none max-w-[320px] space-y-2"></div>
+
+    <!-- GLOBAL TOAST NOTIFICATION -->
+    <div id="toast-container" class="fixed top-16 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+    <script>
+        // --- FRESH STATE & STORAGE ---
+        const FRESH_STATE = {
+            isLoggedIn: false,
+            user: {
+                username: "",
+                email: "",
+                phone: "",
+                userId: "EEP-998410",
+                avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+                balance: 110.00,       // ₹110 login bonus
+                totalEarnings: 0.00,
+                rewardsBalance: 110.00,
+                securityStatus: "SECURE (100% Verified)",
+                upiId: "",
+                securityDepositPaid: false
+            },
+            deposits: [],
+            withdrawals: [],
+            liveSellingFeed: [
+                { user: "Rahul S.", amount: "₹5,000", action: "Fast Withdrawal Successful via UPI" },
+                { user: "Amit K.", amount: "₹10,000", action: "Withdrew via PhonePe (Fast)" },
+                { user: "Priya M.", amount: "₹2,500", action: "Bought USDT & Earned 8%" },
+                { user: "Vikram R.", amount: "₹15,000", action: "Instant Withdrawal Processed" }
+            ]
+        };
+
+        let appState = JSON.parse(localStorage.getItem('platform_state_v8')) || FRESH_STATE;
+        let currentTab = 'home';
+        let depositTabActive = 'inr';
+
+        function saveState() {
+            localStorage.setItem('platform_state_v8', JSON.stringify(appState));
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            if(!container) return;
+            const toast = document.createElement('div');
+            toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-xl text-white text-xs font-medium flex items-center space-x-2 transition transform translate-y-2 opacity-0 ${type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`;
+            toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : 'alert-circle'}" class="w-4 h-4"></i><span>${message}</span>`;
+            container.appendChild(toast);
+            lucide.createIcons();
+            setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 50);
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // --- ROUTING & APP RENDER ---
+        function renderApp() {
+            const root = document.getElementById('app-root');
+            if(!root) return;
+            if(!appState.isLoggedIn) {
+                root.innerHTML = getAuthHTML();
+            } else {
+                root.innerHTML = `
+                    <!-- TOP HEADER BAR WITH EASYEARN PAY -->
+                    <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-100 px-4 py-3 flex items-center justify-between shadow-xs">
+                        <div class="flex items-center space-x-3">
+                            <img src="${appState.user.avatar}" onclick="openProfileModal()" class="w-10 h-10 rounded-full object-cover border-2 border-indigo-500 cursor-pointer shadow-sm" alt="Avatar">
+                            <div>
+                                <div class="flex items-center space-x-1.5">
+                                    <h1 class="text-xs font-bold text-slate-900">${appState.user.username || 'User'}</h1>
+                                    <span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.2 rounded font-semibold">${appState.user.securityStatus}</span>
+                                </div>
+                                <p class="text-[10px] text-slate-500">ID: ${appState.user.userId}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2 text-right">
+                            <div>
+                                <span class="text-xs font-extrabold bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 bg-clip-text text-transparent uppercase tracking-wider">EasyEarn Pay</span>
+                                <p class="text-[9px] text-emerald-600 font-bold">● Fastest Withdrawal</p>
+                            </div>
+                        </div>
+                    </header>
+
+                    <!-- MAIN CONTENT -->
+                    <main id="main-content" class="flex-1 pb-16 overflow-y-auto">
+                        <!-- Loaded via JS -->
+                    </main>
+
+                    <!-- FLOATING BUY / QUICK (+) -->
+                    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-40">
+                        <button onclick="openBuyModal()" class="w-14 h-14 gradient-brand text-white rounded-full shadow-lg shadow-indigo-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition">
+                            <i data-lucide="shopping-bag" class="w-7 h-7"></i>
+                        </button>
+                    </div>
+
+                    <!-- BOTTOM NAVIGATION -->
+                    <nav class="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto bg-white border-t border-slate-200 py-2 px-3 z-30 flex items-center justify-around shadow-lg">
+                        <button onclick="switchTab('home')" class="nav-btn flex flex-col items-center text-slate-500 hover:text-brand-600 transition" data-target="home"><i data-lucide="home" class="w-5 h-5"></i><span class="text-[11px] mt-1 font-medium">Home</span></button>
+                        <button onclick="switchTab('deposit')" class="nav-btn flex flex-col items-center text-slate-500 hover:text-brand-600 transition" data-target="deposit"><i data-lucide="wallet" class="w-5 h-5"></i><span class="text-[11px] mt-1 font-medium">Deposit</span></button>
+                        <div class="w-10"></div>
+                        <button onclick="switchTab('team')" class="nav-btn flex flex-col items-center text-slate-500 hover:text-brand-600 transition" data-target="team"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[11px] mt-1 font-medium">Team</span></button>
+                        <button onclick="switchTab('assets')" class="nav-btn flex flex-col items-center text-slate-500 hover:text-brand-600 transition" data-target="assets"><i data-lucide="pie-chart" class="w-5 h-5"></i><span class="text-[11px] mt-1 font-medium">Assets</span></button>
+                    </nav>
+
+                    <!-- CUSTOMER SUPPORT TELEGRAM LINK BUTTON (BOTTOM RIGHT SIDE) -->
+                    <div class="fixed bottom-24 right-4 z-40">
+                        <a href="https://t.me/easyearnpayc" target="_blank" class="bg-slate-900 text-white px-3.5 py-2.5 rounded-full shadow-lg flex items-center space-x-2 text-xs font-medium hover:bg-slate-800 transition">
+                            <i data-lucide="headphones" class="w-4 h-4 text-emerald-400"></i>
+                            <span>Support</span>
+                        </a>
+                    </div>
+                `;
+                renderContent();
+                updateNavUI();
+                
+                // FORCE SECURITY DEPOSIT: If not paid, immediately show mandatory modal
+                if(!appState.user.securityDepositPaid) {
+                    setTimeout(() => openMandatorySecurityDepositModal(), 200);
+                }
+            }
+            lucide.createIcons();
+        }
+
+        function switchTab(tab) {
+            if(!appState.user.securityDepositPaid) {
+                openMandatorySecurityDepositModal();
+                showToast("Please complete the ₹699 Security Deposit first", "error");
+                return;
+            }
+            currentTab = tab;
+            renderContent();
+            updateNavUI();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function updateNavUI() {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                const target = btn.getAttribute('data-target');
+                if (target === currentTab) {
+                    btn.classList.add('text-brand-600');
+                    btn.classList.remove('text-slate-500');
+                } else {
+                    btn.classList.remove('text-brand-600');
+                    btn.classList.add('text-slate-500');
+                }
+            });
+        }
+
+        function renderContent() {
+            const main = document.getElementById('main-content');
+            if(!main) return;
+            switch(currentTab) {
+                case 'home': main.innerHTML = getHomeHTML(); break;
+                case 'deposit': main.innerHTML = getDepositHTML(); break;
+                case 'team': main.innerHTML = getTeamHTML(); break;
+                case 'assets': main.innerHTML = getAssetsHTML(); break;
+            }
+            lucide.createIcons();
+        }
+
+        // --- AUTH VIEWS ---
+        let authMode = 'login';
+        function setAuthMode(mode) {
+            authMode = mode;
+            renderApp();
+        }
+
+        function togglePasswordView() {
+            const pwdInput = document.getElementById('auth-password');
+            const icon = document.getElementById('pwd-eye-icon');
+            if(pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                icon.setAttribute('data-lucide', 'eye-off');
+            } else {
+                pwdInput.type = 'password';
+                icon.setAttribute('data-lucide', 'eye');
+            }
+            lucide.createIcons();
+        }
+
+        function getAuthHTML() {
+            return `
+                <div class="p-6 flex flex-col justify-center min-h-screen space-y-6">
+                    <div class="text-center space-y-2">
+                        <div class="w-14 h-14 gradient-brand text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/30">
+                            <i data-lucide="zap" class="w-8 h-8"></i>
+                        </div>
+                        <h2 class="text-xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">EasyEarn Pay Platform</h2>
+                        <p class="text-xs text-slate-500">${authMode === 'login' ? 'Login to access fastest withdrawals & rewards' : 'Register now & get instant ₹110 Free Bonus!'}</p>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-xl space-y-4">
+                        <div class="grid grid-cols-2 bg-slate-100 p-1 rounded-xl">
+                            <button onclick="setAuthMode('login')" class="py-2 text-xs font-bold rounded-lg transition ${authMode === 'login' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-600'}">Login</button>
+                            <button onclick="setAuthMode('register')" class="py-2 text-xs font-bold rounded-lg transition ${authMode === 'register' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-600'}">Register</button>
+                        </div>
+
+                        ${authMode === 'register' ? `
+                            <div>
+                                <label class="text-xs font-medium text-slate-600">Full Name / Username</label>
+                                <input type="text" id="reg-username" placeholder="Enter your name" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                        ` : ''}
+
+                        <div>
+                            <label class="text-xs font-medium text-slate-600">Email Address</label>
+                            <input type="email" id="auth-email" placeholder="name@example.com" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                        </div>
+
+                        ${authMode === 'register' ? `
+                            <div>
+                                <label class="text-xs font-medium text-slate-600">Mobile Number</label>
+                                <input type="tel" id="reg-phone" placeholder="9876543210" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                        ` : ''}
+
+                        <div>
+                            <label class="text-xs font-medium text-slate-600">Password</label>
+                            <div class="relative mt-1">
+                                <input type="password" id="auth-password" placeholder="••••••••" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500 pr-10">
+                                <button type="button" onclick="togglePasswordView()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                    <i data-lucide="eye" id="pwd-eye-icon" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <button onclick="handleAuthSubmit()" class="w-full py-3 gradient-brand hover:opacity-95 text-white rounded-xl text-xs font-bold shadow-md transition">
+                            ${authMode === 'login' ? 'Secure Login' : 'Create Account & Claim ₹110 Bonus'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleAuthSubmit() {
+            const email = document.getElementById('auth-email').value;
+            const pass = document.getElementById('auth-password').value;
+            if(!email || !pass) {
+                showToast("Please fill in all required fields", "error");
+                return;
+            }
+
+            showLoadingPopup("Verifying & Connecting...");
+
+            setTimeout(() => {
+                closeModal();
+                if(authMode === 'register') {
+                    const username = document.getElementById('reg-username').value || "New Trader";
+                    const phone = document.getElementById('reg-phone').value || "9999999999";
+                    appState = {
+                        ...FRESH_STATE,
+                        isLoggedIn: true,
+                        user: {
+                            ...FRESH_STATE.user,
+                            username: username,
+                            email: email,
+                            phone: phone,
+                            balance: 110.00,
+                            rewardsBalance: 110.00,
+                            securityDepositPaid: false
+                        }
+                    };
+                    saveState();
+                    showToast("Registration successful! ₹110 bonus added.");
+                } else {
+                    appState.isLoggedIn = true;
+                    if(!appState.user.username) appState.user.username = email.split('@')[0];
+                    saveState();
+                    showToast("Logged in successfully!");
+                }
+                renderApp();
+                startFastLiveSellingPopups();
+            }, 1200);
+        }
+
+        function showLoadingPopup(text) {
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+                    <div class="bg-white w-full max-w-[280px] rounded-3xl p-6 text-center space-y-3 shadow-2xl">
+                        <div class="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                        <p class="text-xs font-bold text-slate-800">${text}</p>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // --- MANDATORY SECURITY DEPOSIT POPUP WITH DEPOSIT BUTTON & STRICT VALIDATION ---
+        function openMandatorySecurityDepositModal() {
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 z-50 bg-slate-900/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                    <div class="bg-white w-full max-w-[420px] rounded-3xl p-6 space-y-4 shadow-2xl border border-indigo-100 text-center relative">
+                        
+                        <!-- Top Right Branding -->
+                        <div class="absolute top-4 right-4 text-right">
+                            <span class="text-[10px] font-extrabold bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent uppercase">EasyEarn Pay</span>
+                            <p class="text-[8px] text-emerald-600 font-bold">Fastest Withdraw</p>
+                        </div>
+
+                        <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto shadow-sm mt-3">
+                            <i data-lucide="shield-alert" class="w-6 h-6"></i>
+                        </div>
+
+                        <div class="space-y-1.5 text-left">
+                            <h3 class="text-sm font-extrabold text-slate-900 text-center">Security Deposit / सुरक्षा जमा</h3>
+                            <p class="text-xs text-slate-600 leading-relaxed font-medium">
+                                First Security Deposit <strong class="text-emerald-600">₹699</strong> then work start for trust. No any type of bind. Best commission <strong class="text-brand-600">8%</strong> with fastest withdrawal!
+                            </p>
+                            <p class="text-[11px] text-indigo-700 font-medium bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
+                                🇮🇳 काम शुरू करने के लिए पहले ₹699 का सिक्योरिटी डिपॉजिट करना अनिवार्य है। यह आपको बाद में वापस कर दिया जाएगा।
+                            </p>
+                        </div>
+
+                        <!-- Deposit Button View / UPI Box -->
+                        <div id="deposit-action-area" class="space-y-3 pt-1">
+                            <button id="show-upi-btn" onclick="revealDepositInfo()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-md transition flex items-center justify-center space-x-2">
+                                <i data-lucide="wallet" class="w-4 h-4"></i>
+                                <span>Deposit ₹699 (Click to Pay)</span>
+                            </button>
+
+                            <div id="upi-details-box" class="hidden space-y-2.5 text-left bg-brand-50 p-3 rounded-2xl border border-brand-100 animate-fade-in">
+                                <p class="text-[11px] text-brand-900 font-bold">PhonePe UPI ID:</p>
+                                <div class="flex items-center justify-between bg-white p-2 rounded-xl border border-brand-200">
+                                    <span class="font-mono font-bold text-brand-700 text-xs select-all">8948957425.wallet@phonepe</span>
+                                    <button onclick="navigator.clipboard.writeText('8948957425.wallet@phonepe'); showToast('UPI ID Copied!');" class="px-2 py-1 bg-brand-600 text-white rounded-lg text-[10px] font-bold">Copy</button>
+                                </div>
+                                <div>
+                                    <label class="text-[11px] font-medium text-slate-600">Enter 12-digit UTR ID *</label>
+                                    <input type="text" id="sec-utr-id" placeholder="Enter UTR Number" class="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                                </div>
+                                <div>
+                                    <label class="text-[11px] font-medium text-slate-600">Attach Payment Screenshot *</label>
+                                    <input type="file" id="sec-screenshot" accept="image/*" class="w-full mt-1 text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-brand-100 file:text-brand-700">
+                                </div>
+                                <button onclick="submitMandatorySecurityDeposit()" class="w-full py-3 gradient-brand hover:opacity-95 text-white rounded-2xl text-xs font-bold shadow-md transition">Pay & Verify ₹699 Security Deposit</button>
+                            </div>
+                        </div>
+
+                        <!-- Niche Support Option -->
+                        <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                            <span>Need help with payment?</span>
+                            <a href="https://t.me/easyearnpayc" target="_blank" class="font-bold text-indigo-600 hover:underline flex items-center space-x-1">
+                                <i data-lucide="headphones" class="w-3.5 h-3.5"></i>
+                                <span>Customer Support</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function revealDepositInfo() {
+            document.getElementById('show-upi-btn').classList.add('hidden');
+            document.getElementById('upi-details-box').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function submitMandatorySecurityDeposit() {
+            const utr = document.getElementById('sec-utr-id').value;
+            const fileInput = document.getElementById('sec-screenshot');
+            
+            if(!utr) {
+                showToast("Please enter 12-digit UTR Transaction ID", "error");
+                return;
+            }
+            if(!fileInput.files || fileInput.files.length === 0) {
+                showToast("Please attach the payment screenshot to proceed", "error");
+                return;
+            }
+
+            showLoadingPopup("Verifying Payment Proof...");
+            setTimeout(() => {
+                closeModal();
+                appState.user.securityDepositPaid = true;
+                appState.user.balance += 699;
+                appState.user.totalEarnings += 50;
+                appState.deposits.unshift({
+                    id: `DEP-${Math.floor(1000 + Math.random()*9000)}`,
+                    type: "INR",
+                    amount: 699,
+                    ref: utr,
+                    date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                    status: "Completed"
+                });
+                saveState();
+                renderApp();
+                showToast("Security deposit verified! Platform unlocked.");
+            }, 1500);
+        }
+
+        // --- HOME DASHBOARD ---
+        function getHomeHTML() {
+            return `
+                <div class="p-4 space-y-4">
+                    <!-- Distinct INR Financial Boxes -->
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="bg-gradient-to-br from-slate-900 to-brand-dark text-white p-3 rounded-2xl shadow-md">
+                            <p class="text-[10px] text-slate-300 font-medium">Wallet (INR)</p>
+                            <h3 class="text-sm font-extrabold mt-1">₹${appState.user.balance.toFixed(2)}</h3>
+                        </div>
+                        <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-xs">
+                            <p class="text-[10px] text-slate-500 font-medium">Total Earning</p>
+                            <h3 class="text-sm font-extrabold text-brand-600 mt-1">₹${appState.user.totalEarnings.toFixed(2)}</h3>
+                        </div>
+                        <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-xs">
+                            <p class="text-[10px] text-slate-500 font-medium">Rewards</p>
+                            <h3 class="text-sm font-extrabold text-emerald-600 mt-1">₹${appState.user.rewardsBalance.toFixed(2)}</h3>
+                        </div>
+                    </div>
+
+                    <!-- Buy / Sell Action Banner -->
+                    <div class="gradient-brand text-white p-4 rounded-2xl shadow-md flex items-center justify-between">
+                        <div>
+                            <span class="bg-white/20 text-[10px] px-2 py-0.5 rounded-full font-semibold">Fastest Withdrawal</span>
+                            <h3 class="text-sm font-bold mt-1">EasyEarn Pay Trading</h3>
+                            <p class="text-[11px] text-indigo-100 mt-0.5">Fastest settlement with 8% commission bonus.</p>
+                            <button onclick="openBuyModal()" class="mt-3 bg-white text-indigo-600 text-xs font-bold px-4 py-2 rounded-xl shadow-sm hover:bg-indigo-50 transition">Start Trading</button>
+                        </div>
+                        <div class="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center shrink-0">
+                            <i data-lucide="zap" class="w-8 h-8 text-amber-300"></i>
+                        </div>
+                    </div>
+
+                    <!-- Quick Shortcuts -->
+                    <div class="grid grid-cols-4 gap-2 bg-white p-3 rounded-2xl border border-slate-100 shadow-xs text-center">
+                        <button onclick="switchTab('deposit')" class="flex flex-col items-center p-2 rounded-xl hover:bg-slate-50 transition">
+                            <div class="w-10 h-10 bg-brand-50 text-brand-600 rounded-xl flex items-center justify-center mb-1"><i data-lucide="wallet" class="w-5 h-5"></i></div>
+                            <span class="text-[11px] font-semibold text-slate-700">Deposit</span>
+                        </button>
+                        <button onclick="openBuyModal()" class="flex flex-col items-center p-2 rounded-xl hover:bg-slate-50 transition">
+                            <div class="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-1"><i data-lucide="shopping-bag" class="w-5 h-5"></i></div>
+                            <span class="text-[11px] font-semibold text-slate-700">Buy Order</span>
+                        </button>
+                        <button onclick="openWithdrawModal()" class="flex flex-col items-center p-2 rounded-xl hover:bg-slate-50 transition">
+                            <div class="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-1"><i data-lucide="arrow-up-right" class="w-5 h-5"></i></div>
+                            <span class="text-[11px] font-semibold text-slate-700">Withdraw</span>
+                        </button>
+                        <button onclick="switchTab('team')" class="flex flex-col items-center p-2 rounded-xl hover:bg-slate-50 transition">
+                            <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-1"><i data-lucide="users" class="w-5 h-5"></i></div>
+                            <span class="text-[11px] font-semibold text-slate-700">Team</span>
+                        </button>
+                    </div>
+
+                    <!-- Live Selling Activity Feed Widget -->
+                    <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs space-y-3">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">EasyEarn Live Feed</h3>
+                            <span class="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold animate-pulse">● Fast Active</span>
+                        </div>
+                        <div id="home-live-feed-list" class="space-y-2">
+                            ${appState.liveSellingFeed.slice(0, 3).map(f => `
+                                <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl text-xs">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-6 h-6 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center font-bold text-[10px]">${f.user[0]}</div>
+                                        <div><p class="font-bold text-slate-900">${f.user}</p><p class="text-[10px] text-slate-500">${f.action}</p></div>
+                                    </div>
+                                    <span class="font-bold text-emerald-600">${f.amount}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- SUPER FAST BACK-TO-BACK WITHDRAWAL & SELLING POPUPS ---
+        let fastPopupInterval = null;
+        function startFastLiveSellingPopups() {
+            if(fastPopupInterval) clearInterval(fastPopupInterval);
+            fastPopupInterval = setInterval(() => {
+                if(!appState.isLoggedIn) return;
+                const names = ["Rohit M.", "Anjali P.", "Deepak S.", "Neha W.", "Karan T.", "Pooja B.", "Sameer K.", "Aarav V.", "Manish S.", "Kajal D."];
+                const amounts = ["₹1,000", "₹2,500", "₹5,000", "₹10,000", "₹20,000", "₹8,500", "₹12,000", "₹699"];
+                const actions = [
+                    "⚡ Fastest Withdrawal Completed via UPI", 
+                    "🔥 PhonePe Withdrawal Successful", 
+                    "✅ Sold USDT & Received Fast", 
+                    "🚀 Instant P2P Withdrawal Paid", 
+                    "💰 Buy Order Completed (+8%)"
+                ];
+                const rName = names[Math.floor(Math.random() * names.length)];
+                const rAmt = amounts[Math.floor(Math.random() * amounts.length)];
+                const rAct = actions[Math.floor(Math.random() * actions.length)];
+
+                showFastPopup(rName, rAmt, rAct);
+            }, 2200);
+        }
+
+        function showFastPopup(name, amount, action) {
+            const container = document.getElementById('live-selling-toast-container');
+            if(!container) return;
+            const popup = document.createElement('div');
+            popup.className = `bg-slate-900/95 backdrop-blur-xs text-white p-3 rounded-2xl shadow-2xl text-xs flex items-center space-x-3 animate-slide-up border border-slate-800`;
+            popup.innerHTML = `
+                <div class="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold text-xs shrink-0">${name[0]}</div>
+                <div>
+                    <p class="font-bold">${name} <span class="text-emerald-400 font-semibold">${amount}</span></p>
+                    <p class="text-[10px] text-slate-400">${action}</p>
+                </div>
+            `;
+            container.appendChild(popup);
+            setTimeout(() => {
+                popup.style.opacity = '0';
+                popup.style.transform = 'translateY(10px)';
+                popup.style.transition = 'all 0.2s ease';
+                setTimeout(() => popup.remove(), 200);
+            }, 2500);
+        }
+
+        // --- DEPOSIT SECTION ---
+        function getDepositHTML() {
+            return `
+                <div class="p-4 space-y-4">
+                    <div class="grid grid-cols-2 bg-slate-200 p-1 rounded-xl">
+                        <button onclick="setDepositTab('inr')" class="py-2 text-xs font-bold rounded-lg transition ${depositTabActive === 'inr' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-600'}">INR Deposit</button>
+                        <button onclick="setDepositTab('usdt')" class="py-2 text-xs font-bold rounded-lg transition ${depositTabActive === 'usdt' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-600'}">USDT Deposit</button>
+                    </div>
+
+                    <div class="${depositTabActive === 'inr' ? '' : 'hidden'} space-y-4">
+                        <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs space-y-3">
+                            <div class="bg-brand-50 border border-brand-100 p-3 rounded-2xl space-y-1">
+                                <p class="text-[11px] text-brand-800 font-bold">Official PhonePe UPI ID for Deposit:</p>
+                                <div class="flex items-center justify-between">
+                                    <span class="font-mono font-bold text-brand-700 text-sm select-all">8948957425.wallet@phonepe</span>
+                                    <button onclick="navigator.clipboard.writeText('8948957425.wallet@phonepe'); showToast('UPI ID Copied!');" class="px-2.5 py-1 bg-brand-600 text-white rounded-lg text-[10px] font-bold">Copy</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-600">Enter Deposited Amount (₹)</label>
+                                <input type="number" id="dep-inr-amt" placeholder="Min ₹100" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-600">Enter UTR / Transaction Reference ID</label>
+                                <input type="text" id="dep-utr" placeholder="12-digit UTR Number" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-600">Upload Payment Screenshot</label>
+                                <input type="file" id="dep-screenshot" accept="image/*" class="w-full mt-1 text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
+                            </div>
+                            <button onclick="submitDepositPayment('INR')" class="w-full py-3 gradient-brand hover:opacity-95 text-white rounded-xl text-xs font-bold shadow-md transition">Submit Payment & Verify</button>
+                        </div>
+                    </div>
+
+                    <div class="${depositTabActive === 'usdt' ? '' : 'hidden'} space-y-4">
+                        <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs space-y-3">
+                            <div class="bg-slate-50 border border-slate-200 p-3 rounded-2xl space-y-1">
+                                <p class="text-[11px] text-slate-700 font-bold">TRC20 Wallet Address:</p>
+                                <span class="font-mono font-bold text-xs text-brand-600 select-all">TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE</span>
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-600">USDT Amount ($)</label>
+                                <input type="number" id="dep-usdt-amt" placeholder="Min $10" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-600">Transaction Hash (TxID)</label>
+                                <input type="text" id="dep-txid" placeholder="Enter blockchain hash" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                            <button onclick="submitDepositPayment('USDT')" class="w-full py-3 gradient-brand hover:opacity-95 text-white rounded-xl text-xs font-bold shadow-md transition">Submit USDT Hash</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function setDepositTab(tab) {
+            depositTabActive = tab;
+            renderContent();
+        }
+
+        function submitDepositPayment(type) {
+            const amt = type === 'INR' ? parseFloat(document.getElementById('dep-inr-amt')?.value || 500) : parseFloat(document.getElementById('dep-usdt-amt')?.value || 10);
+            const refId = type === 'INR' ? document.getElementById('dep-utr')?.value : document.getElementById('dep-txid')?.value;
+            if(!amt || amt <= 0) {
+                showToast("Please enter a valid deposit amount", "error");
+                return;
+            }
+            if(!refId) {
+                showToast(type === 'INR' ? "Please enter UTR number" : "Please enter Transaction Hash", "error");
+                return;
+            }
+
+            showLoadingPopup("Verifying Payment with Gateway...");
+            setTimeout(() => {
+                closeModal();
+                appState.deposits.unshift({
+                    id: `DEP-${Math.floor(1000 + Math.random()*9000)}`,
+                    type: type,
+                    amount: amt,
+                    ref: refId,
+                    date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                    status: "Completed"
+                });
+                if(type === 'INR') {
+                    appState.user.balance += amt;
+                } else {
+                    appState.user.balance += (amt * 88);
+                }
+                saveState();
+                switchTab('home');
+                showToast(`Deposit of ${type === 'INR' ? '₹' + amt : '$' + amt} verified & credited!`);
+            }, 1200);
+        }
+
+        // --- TEAM SECTION ---
+        function getTeamHTML() {
+            const refLink = `https://easyearnpay.com/ref/${appState.user.userId}`;
+            return `
+                <div class="p-4 space-y-4">
+                    <div class="gradient-brand text-white p-5 rounded-2xl shadow-md space-y-3">
+                        <h3 class="text-sm font-bold">Invite Friends & Unlock 8% Commission</h3>
+                        <p class="text-xs text-indigo-100">Earn flat 8% commission instantly on team deposits and buy order rewards!</p>
+                        <div class="bg-white/10 p-2.5 rounded-xl flex items-center justify-between text-xs">
+                            <span class="truncate font-mono mr-2">${refLink}</span>
+                            <button onclick="navigator.clipboard.writeText('${refLink}'); showToast('Referral link copied!');" class="bg-white text-indigo-600 px-3 py-1.5 rounded-lg font-bold shrink-0">Copy</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- ASSETS SECTION ---
+        function getAssetsHTML() {
+            return `
+                <div class="p-4 space-y-4">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+                        <div>
+                            <p class="text-xs text-slate-500 font-medium">Wallet Balance (INR)</p>
+                            <h2 class="text-3xl font-extrabold text-slate-900 mt-1">₹${appState.user.balance.toFixed(2)}</h2>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                            <div>
+                                <p class="text-[11px] text-slate-500 font-medium">Total Earning</p>
+                                <p class="text-sm font-bold text-brand-600 mt-0.5">₹${appState.user.totalEarnings.toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] text-slate-500 font-medium">Rewards</p>
+                                <p class="text-sm font-bold text-emerald-600 mt-0.5">₹${appState.user.rewardsBalance.toFixed(2)}</p>
+                            </div>
+                        </div>
+                        <button onclick="openWithdrawModal()" class="w-full py-3 gradient-brand text-white rounded-xl text-xs font-bold shadow-md">Withdraw Funds</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- MODALS ---
+        const modalContainer = document.getElementById('modal-container');
+        function closeModal() { if(modalContainer) modalContainer.innerHTML = ""; }
+
+        function openBuyModal() {
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+                    <div class="bg-white w-full max-w-[480px] rounded-3xl p-5 space-y-4 shadow-2xl">
+                        <div class="flex justify-between items-center"><h3 class="text-sm font-bold">Buy Order & 8% Reward Calculator</h3><button onclick="closeModal()"><i data-lucide="x" class="w-5 h-5"></i></button></div>
+                        <div>
+                            <label class="text-xs font-medium text-slate-600">Enter Buy Amount (₹)</label>
+                            <input type="number" id="buy-amount-input" oninput="calcBuyReward()" placeholder="Enter amount (e.g., 1000)" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div class="bg-brand-50 p-3.5 rounded-xl space-y-1.5 text-xs text-brand-900">
+                            <div class="flex justify-between"><span>Buy Amount:</span> <span id="display-buy-amt" class="font-bold">₹0.00</span></div>
+                            <div class="flex justify-between"><span>8% Reward Bonus:</span> <span id="display-reward-amt" class="font-bold text-emerald-600">+₹0.00</span></div>
+                            <hr class="border-brand-200">
+                            <div class="flex justify-between font-bold text-sm"><span>Total Payout Return:</span> <span id="display-total-payout" class="text-brand-700">₹0.00</span></div>
+                        </div>
+                        <button onclick="submitBuyOrder()" class="w-full py-3 gradient-brand hover:opacity-95 text-white rounded-xl text-xs font-bold shadow-md transition">Confirm & Execute Buy</button>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function calcBuyReward() {
+            const val = parseFloat(document.getElementById('buy-amount-input').value) || 0;
+            const reward = val * 0.08;
+            const total = val + reward;
+            document.getElementById('display-buy-amt').innerText = `₹${val.toFixed(2)}`;
+            document.getElementById('display-reward-amt').innerText = `+₹${reward.toFixed(2)}`;
+            document.getElementById('display-total-payout').innerText = `₹${total.toFixed(2)}`;
+        }
+
+        function submitBuyOrder() {
+            const val = parseFloat(document.getElementById('buy-amount-input').value) || 0;
+            if(val <= 0 || val > appState.user.balance) {
+                showToast("Invalid amount or insufficient wallet balance", "error");
+                return;
+            }
+            const reward = val * 0.08;
+            showLoadingPopup("Processing Buy Order...");
+            setTimeout(() => {
+                closeModal();
+                appState.user.balance -= val;
+                appState.user.balance += (val + reward);
+                appState.user.totalEarnings += reward;
+                appState.user.rewardsBalance += reward;
+                saveState();
+                renderContent();
+                showToast(`Buy order successful! Earned +₹${reward.toFixed(2)} reward.`);
+            }, 1000);
+        }
+
+        function openWithdrawModal() {
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+                    <div class="bg-white w-full max-w-[480px] max-h-[90vh] overflow-y-auto rounded-3xl p-5 space-y-4 shadow-2xl">
+                        <div class="flex justify-between items-center"><h3 class="text-sm font-bold">Fastest Withdrawal (UPI & QR)</h3><button onclick="closeModal()"><i data-lucide="x" class="w-5 h-5"></i></button></div>
+                        <div>
+                            <label class="text-xs font-medium text-slate-600">Withdrawal Amount (₹)</label>
+                            <input type="number" id="wdr-amount" placeholder="Enter amount" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-slate-600">Enter UPI ID</label>
+                            <input type="text" id="wdr-upi" placeholder="username@phonepe / okhdfcbank" class="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-slate-600">Upload QR Code Image</label>
+                            <input type="file" id="wdr-qr-file" accept="image/*" class="w-full mt-1 text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
+                        </div>
+                        <button onclick="submitWithdrawal()" class="w-full py-3 gradient-brand hover:opacity-95 text-white rounded-xl text-xs font-bold transition">Submit Withdrawal Request</button>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function submitWithdrawal() {
+            const amt = parseFloat(document.getElementById('wdr-amount').value);
+            const upi = document.getElementById('wdr-upi').value;
+            if(!amt || amt <= 0 || amt > appState.user.balance) {
+                showToast("Invalid amount or insufficient balance", "error");
+                return;
+            }
+            if(!upi) {
+                showToast("Please enter your UPI ID", "error");
+                return;
+            }
+            showLoadingPopup("Processing Fastest Withdrawal...");
+            setTimeout(() => {
+                closeModal();
+                appState.user.balance -= amt;
+                appState.withdrawals.unshift({
+                    id: `WDR-${Math.floor(1000 + Math.random()*9000)}`,
+                    amount: amt,
+                    upi: upi,
+                    date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                    status: "Pending"
+                });
+                saveState();
+                renderContent();
+                showToast(`Withdrawal of ₹${amt.toFixed(2)} submitted successfully!`);
+            }, 1000);
+        }
+
+        function openProfileModal() {
+            modalContainer.innerHTML = `
+                <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+                    <div class="bg-white w-full max-w-[480px] rounded-3xl p-5 space-y-4 shadow-2xl text-center">
+                        <img src="${appState.user.avatar}" class="w-16 h-16 rounded-full object-cover mx-auto border-2 border-indigo-500">
+                        <h3 class="text-sm font-bold">${appState.user.username}</h3>
+                        <p class="text-xs text-slate-500">Email: ${appState.user.email}</p>
+                        <p class="text-xs text-slate-500">Security Status: <strong class="text-emerald-600">${appState.user.securityStatus}</strong></p>
+                        <button onclick="appState.isLoggedIn = false; saveState(); closeModal(); renderApp(); showToast('Logged out securely');" class="w-full py-2.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold">Logout Account</button>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderApp();
+            if(appState.isLoggedIn) startFastLiveSellingPopups();
+        });
+    </script>
+</body>
+</html>
